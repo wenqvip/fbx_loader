@@ -1,0 +1,8 @@
+fbx_loader/Debug
+OUTPUT.txt
+sphere.txt
+*.user
+.vs
+*.sdf
+*.suo
+Debug
