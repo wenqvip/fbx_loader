@@ -6,3 +6,5 @@ sphere.txt
 *.sdf
 *.suo
 Debug
+*.opensdf
+*.txt

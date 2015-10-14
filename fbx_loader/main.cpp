@@ -4,7 +4,7 @@
 #include <string>
 using namespace std;
 
-#pragma comment(lib, "libfbxsdk-md.lib")
+#pragma comment(lib, "libfbxsdk.lib")
 
 /* Tab character ("\t") counter */
 int numTabs = 0;
@@ -156,8 +156,8 @@ void PrintNode(FbxNode* pNode) {
 
 int main()
 {
-	freopen("sphere.txt", "w", stdout);
-	const char* lFilename = "sphere.fbx";
+	freopen("plane10x10.txt", "w", stdout);
+	const char* lFilename = "plane10x10.fbx";
 	FbxManager* lSdkManager = FbxManager::Create();
 	FbxIOSettings *ios = FbxIOSettings::Create(lSdkManager, IOSROOT);
 	lSdkManager->SetIOSettings(ios);
