@@ -58,6 +58,56 @@ void PrintFbxVector2(FbxVector2 fv4)
 	printf("(%f, %f)\n", fv4.mData[0], fv4.mData[1]);
 }
 
+void ConvertMapping(FbxLayerElementUV* pUVs, FbxMesh* pMesh)
+{
+	if (pUVs->GetMappingMode() == FbxLayerElement::eByPolygonVertex)
+	{
+		if (pUVs->GetReferenceMode() == FbxLayerElement::eIndexToDirect)
+		{
+			FbxArray<int> lNewIndexToDirect;
+			FbxArray<FbxVector2> lNewUVs;
+
+			// keep track of the processed control points
+			
+			FbxSet<FbxHandle> lProcessedCP;
+			lProcessedCP.Reserve(pMesh->GetControlPointsCount());
+			//for (int i = 0; i < pMesh->GetControlPointsCount(); i++)
+				//lProcessedCP.Insert((FbxHandle)i);
+
+			// visit each polygon and polygon vertex
+			for (int p = 0; p < pMesh->GetPolygonCount(); p++)
+			{
+				for (int pv = 0; pv < pMesh->GetPolygonSize(p); pv++)
+				{
+					int lCP = pMesh->GetPolygonVertex(p, pv);
+
+					// check if we already processed this control point
+					if (lProcessedCP.Find((FbxHandle)lCP) == NULL)
+					{
+						FbxVector2 uv = pUVs->GetDirectArray().GetAt(lCP);
+						lNewUVs.Add(uv);
+						lNewIndexToDirect.Add(lCP);
+						lProcessedCP.Insert((FbxHandle)lCP);
+					}
+				}
+			}
+
+			// change the content of the index array and its mapping
+			pUVs->SetMappingMode(FbxLayerElement::eByControlPoint);
+			pUVs->GetIndexArray().Clear();
+			pUVs->GetIndexArray().Resize(lNewIndexToDirect.GetCount());
+			for (int i = 0; i < lNewIndexToDirect.GetCount(); i++)
+				pUVs->mIndexArray->SetAt(i, lNewIndexToDirect.GetAt(i));
+
+			// and the content of the direct array
+			pUVs->GetDirectArray().Clear();
+			pUVs->GetDirectArray().Resize(lNewUVs.GetCount());
+			for (int j = 0; j < lNewUVs.GetCount(); j++)
+				pUVs->mDirectArray->SetAt(j, lNewUVs.GetAt(j));
+		}
+	}
+}
+
 /**
 * Print an attribute.
 */
@@ -101,25 +151,44 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
 		{
 			FbxLayer* pLayer = pMesh->GetLayer(i);
 			FbxLayerElementNormal* pNormal = pLayer->GetNormals();
-
-			PrintTabs();
-			printf("Normals:\n");
-			++numTabs;
-			for (int i = 0; i < pNormal->mDirectArray->GetCount(); i++)
+			if (pNormal)
 			{
-				PrintFbxVector4((*pNormal->mDirectArray)[i]);
+				FbxLayerElement::EReferenceMode rnmode = pNormal->GetReferenceMode();
+
+				PrintTabs();
+				printf("Normals:\n");
+				++numTabs;
+				for (int i = 0; i < pNormal->mDirectArray->GetCount(); i++)
+				{
+					PrintFbxVector4((*pNormal->mDirectArray)[i]);
+				}
+				--numTabs;
 			}
-			--numTabs;
 
 			FbxLayerElementUV* pUV = pLayer->GetUVs();
-			PrintTabs();
-			printf("UVs:\n");
-			++numTabs;
-			for (int i = 0; i < pUV->mDirectArray->GetCount(); i++)
+			if (pUV)
 			{
-				PrintFbxVector2((*pUV->mDirectArray)[i]);
+				FbxLayerElement::EMappingMode mode = pUV->GetMappingMode();
+				FbxLayerElement::EReferenceMode rmode = pUV->GetReferenceMode();
+				PrintTabs();
+				printf("UVs:\n");
+				++numTabs;
+				for (int i = 0; i < pUV->mDirectArray->GetCount(); i++)
+				{
+					PrintFbxVector2((*pUV->mDirectArray)[i]);
+				}
+				--numTabs;
+				PrintTabs();
+				printf("UV indices:\n");
+				++numTabs;
+				for (int i = 0; i < pUV->mIndexArray->GetCount(); i++)
+				{
+					PrintTabs();
+					printf("%d\n", (*pUV->mIndexArray)[i]);
+					//PrintFbxVector2((*pUV->mIndexArray)[i]);
+				}
+				--numTabs;
 			}
-			--numTabs;
 		}
 		--numTabs;
 	}
@@ -154,16 +223,21 @@ void PrintNode(FbxNode* pNode) {
 	printf("</node>\n");
 }
 
+std::string FBX_NAME = "HumanoidIdle";
+std::string FBX_OUT = FBX_NAME + ".txt";
+std::string FBX_IN = FBX_NAME + ".fbx";
+
 int main()
 {
-	freopen("plane10x10.txt", "w", stdout);
-	const char* lFilename = "plane10x10.fbx";
+	freopen(FBX_OUT.c_str(), "w", stdout);
+
 	FbxManager* lSdkManager = FbxManager::Create();
 	FbxIOSettings *ios = FbxIOSettings::Create(lSdkManager, IOSROOT);
 	lSdkManager->SetIOSettings(ios);
 	FbxImporter* lImporter = FbxImporter::Create(lSdkManager, "");
 
-	if (!lImporter->Initialize(lFilename, -1, lSdkManager->GetIOSettings())) {
+	if (!lImporter->Initialize(FBX_IN.c_str(), -1, lSdkManager->GetIOSettings()))
+	{
 		printf("Call to FbxImporter::Initialize() failed.\n");
 		printf("Error returned: %s\n\n", lImporter->GetStatus().GetErrorString());
 		exit(-1);
@@ -174,7 +248,8 @@ int main()
 	lImporter->Destroy();
 
 	FbxNode* lRootNode = lScene->GetRootNode();
-	if (lRootNode) {
+	if (lRootNode)
+	{
 		for (int i = 0; i < lRootNode->GetChildCount(); i++)
 			PrintNode(lRootNode->GetChild(i));
 	}
