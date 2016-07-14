@@ -1,11 +1,12 @@
+#pragma comment(lib, "libfbxsdk.lib")
+#define FBXSDK_SHARED
+#include <fbxsdk.h>
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <fbxsdk.h>
 #include <string>
+
 using namespace std;
-
-#pragma comment(lib, "libfbxsdk.lib")
-
 /* Tab character ("\t") counter */
 int numTabs = 0;
 
@@ -61,7 +62,7 @@ void PrintFbxVector2(FbxVector2 fv4)
 /**
 * Print an attribute.
 */
-void PrintAttribute(FbxNodeAttribute* pAttribute) {
+void PrintAttribute(FbxNodeAttribute* pAttribute, bool detail) {
 	if (!pAttribute) return;
 
 	FbxString typeName = GetAttributeTypeName(pAttribute->GetAttributeType());
@@ -77,7 +78,9 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
 		printf("Mesh Control Points: \n");
 		FbxVector4* IControlPoints = pMesh->GetControlPoints();
 		++numTabs;
-		for (int i = 0; i < pMesh->GetControlPointsCount(); i++)
+		int count = detail ? pMesh->GetControlPointsCount() : 
+			(pMesh->GetControlPointsCount() < 3 ? pMesh->GetControlPointsCount() : 3);
+		for (int i = 0; i < count; i++)
 		{
 			PrintFbxVector4(IControlPoints[i]);
 		}
@@ -87,7 +90,9 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
 		printf("Mesh Index: \n");
 		++numTabs;
 		int* pIndices = pMesh->GetPolygonVertices();
-		for (int i = 0; i < pMesh->GetPolygonVertexCount(); ++i)
+		count = detail ? pMesh->GetPolygonVertexCount() : 
+			(pMesh->GetPolygonVertexCount() < 3 ? pMesh->GetPolygonVertexCount() : 3);
+		for (int i = 0; i < count; ++i)
 		{
 			PrintTabs();
 			printf("%d\n", pIndices[i]);
@@ -105,7 +110,9 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
 			PrintTabs();
 			printf("Normals:\n");
 			++numTabs;
-			for (int i = 0; i < pNormal->mDirectArray->GetCount(); i++)
+			count = detail ? pNormal->mDirectArray->GetCount() : 
+				(pNormal->mDirectArray->GetCount() < 3 ? pNormal->mDirectArray->GetCount() : 3);
+			for (int i = 0; i < count; i++)
 			{
 				PrintFbxVector4((*pNormal->mDirectArray)[i]);
 			}
@@ -115,17 +122,52 @@ void PrintAttribute(FbxNodeAttribute* pAttribute) {
 			PrintTabs();
 			printf("UVs:\n");
 			++numTabs;
-			for (int i = 0; i < pUV->mDirectArray->GetCount(); i++)
+			count = detail ? pUV->mDirectArray->GetCount() : 
+				(pUV->mDirectArray->GetCount() < 3 ? pUV->mDirectArray->GetCount() : 3);
+			for (int i = 0; i < count; i++)
 			{
 				PrintFbxVector2((*pUV->mDirectArray)[i]);
 			}
 			--numTabs;
+
+			FbxLayerElementTangent* pTangent = pLayer->GetTangents();
+			if (pTangent)
+			{
+				PrintTabs();
+				printf("Tangents:\n");
+				++numTabs;
+				count = detail ? pTangent->mDirectArray->GetCount() : 
+					(pTangent->mDirectArray->GetCount() < 3 ? pTangent->mDirectArray->GetCount() : 3);
+				for (int i = 0; i < count; i++)
+				{
+					PrintFbxVector4((*pTangent->mDirectArray)[i]);
+				}
+				--numTabs;
+			}
+
+			for (int i = FbxLayerElement::eTextureDiffuse; i < FbxLayerElement::eTypeCount; i++)
+			{
+				FbxLayerElementTexture* pTextures = pLayer->GetTextures((FbxLayerElement::EType)i);
+				if (pTextures)
+				{
+					PrintTabs();
+					printf("Textures:\n");
+					++numTabs;
+					count = detail ? pTextures->mDirectArray->GetCount() : 
+						pTextures->mDirectArray->GetCount() < 3 ? pTextures->mDirectArray->GetCount() : 3;
+					for (int j = 0; j < count; j++)
+					{
+						printf("%d:%s\n", i, (*pTextures->mDirectArray)[j]->GetUrl());
+					}
+					--numTabs;
+				}
+			}
 		}
 		--numTabs;
 	}
 }
 
-void PrintNode(FbxNode* pNode) {
+void PrintNode(FbxNode* pNode, bool detail) {
 	PrintTabs();
 	const char* nodeName = pNode->GetName();
 	FbxDouble3 translation = pNode->LclTranslation.Get();
@@ -143,27 +185,69 @@ void PrintNode(FbxNode* pNode) {
 
 	// Print the node's attributes.
 	for (int i = 0; i < pNode->GetNodeAttributeCount(); i++)
-		PrintAttribute(pNode->GetNodeAttributeByIndex(i));
+		PrintAttribute(pNode->GetNodeAttributeByIndex(i), detail);
 
 	// Recursively print the children.
 	for (int j = 0; j < pNode->GetChildCount(); j++)
-		PrintNode(pNode->GetChild(j));
+		PrintNode(pNode->GetChild(j), detail);
 
 	numTabs--;
 	PrintTabs();
 	printf("</node>\n");
 }
 
-int main()
+void PrintAnimation(FbxScene* lScene, bool detail)
 {
-	freopen("plane10x10.txt", "w", stdout);
-	const char* lFilename = "plane10x10.fbx";
+	printf("\n---Animation Informations---\n");
+	int numStacks = lScene->GetSrcObjectCount<FbxAnimStack>();
+	printf("There are %d animation stack(s)\n", numStacks);
+	for (int i = 0; i < numStacks; i++)
+	{
+		FbxAnimStack* pAnimStack = FbxCast<FbxAnimStack>(lScene->GetSrcObject<FbxAnimStack>());
+		printf("--%s\n", pAnimStack->GetName());
+		int numLayers = pAnimStack->GetMemberCount<FbxAnimLayer>();
+		numTabs++;
+		for (int j = 0; j < numLayers; j++)
+		{
+			FbxAnimLayer* lAnimLayer = pAnimStack->GetMember<FbxAnimLayer>(j);
+			PrintTabs();
+			printf("%s\n", lAnimLayer->GetName());
+		}
+		numTabs--;
+	}
+}
+
+int main(int argc, char* argv[])
+{
+	string filename = "zhankuang.fbx";
+	bool detail = false;
+	for (int i = 1; i < argc; i++)
+	{
+		if (argv[i][0] == '-')
+		{
+			int pn = strlen(argv[i]);
+			for (int j = 1; j < pn; j++)
+			{
+				if (argv[i][j] == 'd' || argv[i][j] == 'D')
+				{
+					detail = true;
+				}
+			}
+		}
+		else
+		{
+			filename = argv[i];
+		}
+	}
+	string outfile = filename + ".txt";
+	freopen(outfile.c_str(), "w", stdout);
+
 	FbxManager* lSdkManager = FbxManager::Create();
 	FbxIOSettings *ios = FbxIOSettings::Create(lSdkManager, IOSROOT);
 	lSdkManager->SetIOSettings(ios);
 	FbxImporter* lImporter = FbxImporter::Create(lSdkManager, "");
 
-	if (!lImporter->Initialize(lFilename, -1, lSdkManager->GetIOSettings())) {
+	if (!lImporter->Initialize(filename.c_str(), -1, lSdkManager->GetIOSettings())) {
 		printf("Call to FbxImporter::Initialize() failed.\n");
 		printf("Error returned: %s\n\n", lImporter->GetStatus().GetErrorString());
 		exit(-1);
@@ -176,8 +260,10 @@ int main()
 	FbxNode* lRootNode = lScene->GetRootNode();
 	if (lRootNode) {
 		for (int i = 0; i < lRootNode->GetChildCount(); i++)
-			PrintNode(lRootNode->GetChild(i));
+			PrintNode(lRootNode->GetChild(i), detail);
 	}
+	PrintAnimation(lScene, detail);
+
 	lSdkManager->Destroy();
 	return 0;
 }
